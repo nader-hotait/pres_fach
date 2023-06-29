@@ -1,0 +1,23 @@
+project:
+  type: website
+
+website:
+  title: "pres_rad"
+  navbar:
+    left:
+      - href: index.qmd
+        text: Home
+      - about.qmd
+
+format:
+  clean-revealjs:
+    self-contained: true
+    logo: "logo.png"
+    css: logo.css
+    embed-resources: true
+
+execute:
+  echo: false
+bibliography: religions.bib
+csl: ieee
+

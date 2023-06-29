@@ -1,0 +1,350 @@
+---
+title: "TikTok als Brandbeschleuniger?"
+subtitle:  "Ein Monitoring potentiell radikalisierender Accounts"
+author:
+  - name: Nader Hotait
+    orcid: 0000-0003-4211-5300
+    email: nader.hotait@hu-berlin.de
+    affiliations: Humboldt-Universität zu Berlin (BIM)
+  - name: "<br>"
+    email: nhotait@mail.uni-mannheim.de
+    affiliations: Universität Mannheim (CDSS)
+date: "29 Juli, 2023"
+lang: de
+---
+
+
+## Hintergrund und Ziele
+
+### TikTok und Radikalisierung
+
+:::: {.columns}
+
+::: {.column width="50%"}
+
+-   (Umfangreiches) radikales Material vorhanden^[@weimann2020_2; @moduszad1]^
+-   Algorithmen und extremistische Rabbit Holes^[@mediamatters2021]^
+-   Junge und aktive Nutzerschaft^[@tiktok2022]^
+:::
+
+::: {.column width="50%"}
+
+-   Mögl. Effekt des Konsums auf Radikalisierung^[@hassan2018; @wolfowicz2022]^
+-   Ideologieverstärkung durch Filterblasen^[@dubois2018; @reed2019; @whittaker2021; @wolfowicz2021]^
+-   Höhere Vulnerabilität bei jüngeren Menschen^[@emmelkamp2020]^
+:::
+
+::::
+
+&#8594; Wie entfalten sich diese Dynamiken auf TikTok?<br>
+&#8594; Mixed-Methods Studie von aktuell 53 TikTok Accounts
+
+------------------------------------------------------------------------
+
+## Daten
+
+<style>
+ul {
+  font-size: 80%;
+  margin-left: 1.5em;
+}
+</style>
+
++ Rad Videos weitaus länger
++ Rad Akteure leicht aktiver
+
+```{r load_data}
+pacman::p_load(tidyverse, readxl, lubridate, gt, stringr, 
+               RColorBrewer, plotly, gridExtra)
+
+source_df <- read_xlsx("all_proof.xlsx") %>%
+  select(`TikTok Account`, source)
+names(source_df) <- c("user", "list")
+
+source_df$list[startsWith(source_df$list, "rad")] <- "rad"
+source_df$list[startsWith(source_df$list, "regular")] <- "regular"
+
+crawled_df <- read_xlsx("crawled_no_duplicates.xlsx")
+
+merged <- left_join(crawled_df, source_df, by = "user")
+
+merged$user_2 <- merged$user
+merged$user_2[merged$user_2=="generation_islamgi"] <- "generation_islam"
+```
+
+
+```{r descriptives}
+summary_data <- merged %>%
+  group_by(list) %>%
+  summarise(accounts = n_distinct(user_2),
+            videos = length(user_2),
+            `average videos` = round(length(user_2)/length(unique(user_2))),
+            `average duration` = round(as.duration(sum(duration_sec, na.rm =TRUE)/length(user_2))))
+
+summary_data <- summary_data %>%
+  add_row(list = "all",
+          accounts = n_distinct(merged$user_2),
+          videos = length(merged$user_2),
+          `average videos` = round(length(merged$user_2) / length(unique(merged$user_2))),
+          `average duration` = round(as.duration(sum(merged$duration_sec, na.rm =TRUE)/length(merged$user_2))))
+
+summary_data <- gt(summary_data)
+summary_data <-
+  summary_data %>%
+  tab_header(title = "Stichprobe")
+
+summary_data <- summary_data %>%
+  tab_options(table.width = pct(80), table.align = "center")
+
+summary_data
+```
+
+&#8594; Aktuell: Können wir die Viralität von Inhalten dekonstruieren?
+
+## Bisherige Befunde - Radikale Viralität?
+
+### Reichweite
+
++ Regulärer muslimische Accounts werden im Durchschnitt weitaus öfter gesichtet
++ Potentiell radikalisierende Accounts dennoch häufig genug gesichtet?
++ Gibt es `technische` Gründe? Wie wird der Algorithmus stimuliert?
+
+```{r likes_views}
+likes_views <- merged %>%
+  group_by(list) %>%
+  summarise(views = sum(views),
+            likes = sum(likes_count),
+            `average views` = round(sum(views)/length(user_2)),
+            `average likes` = round(sum(likes_count)/length(user_2)))
+
+likes_views <- likes_views %>%
+  add_row(list = "all",
+          views = sum(merged$views),
+            likes = sum(merged$likes_count),
+            `average views` = round(sum(merged$views)/length(merged$user_2)),
+            `average likes` = round(sum(merged$likes_count)/length(merged$user_2)))
+
+likes_views <- gt(likes_views)
+likes_views <-
+  likes_views %>%
+  tab_header(title = "Likes und Views")
+
+likes_views <- likes_views %>%
+  tab_options(table.width = pct(80), table.align = "center")
+
+likes_views
+```
+
+------------------------------------------------------------------------
+
+### Videolänge und Likes
+
+```{r}
+# likes <- data.frame(
+#   merged %>%
+#     group_by(list) %>%
+#     summarise(`Average Likes` = round(sum(likes_count)/length(user_2)))
+# )
+# 
+# names(likes) <- c("Liste", "Average Likes")
+
+ggplot(merged, aes(x = duration_sec, y = likes_count, color = list)) +
+  geom_point(alpha = 0.4) +
+  theme_minimal() +
+  theme(legend.position="bottom") +
+  theme(legend.title=element_blank()) +
+  ylab("Likes") +
+  xlab("Videolänge") +
+  scale_color_brewer(palette = "Dark2") # +
+  # annotation_custom(tableGrob(likes, rows=NULL, theme = ttheme_minimal()), 
+  #                   xmin=240, xmax=600, ymin=1300000, ymax=2500000)
+```
+
+------------------------------------------------------------------------
+
+### Videolänge, Reichweite und Likes
+
+```{r rd}
+merged %>%
+  plot_ly(x = ~duration_sec, y = ~likes_count, z = ~views, type = "scatter3d", mode = "markers", color = ~list) %>%
+  layout(scene = list(xaxis = list(title = "Videolänge"), yaxis = list(title = "Likes"), zaxis = list(title = "Views")))
+```
+
+------------------------------------------------------------------------
+
+### Aktivitätsmuster
+
+```{r views}
+merged %>%
+  filter(list == "rad", user_2 != "isso_bayan") %>%
+  ggplot(., aes(x = date, y = log(views), color = user_2)) +
+  geom_line() +
+  geom_point(alpha = 0.4) +
+  theme_minimal() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(x = "Zeitraum", y = "Log(Views)") +
+  facet_wrap(vars(user_2))
+```
+
+------------------------------------------------------------------------
+
+### "Spontane Viralität" ? (Adnan Omar)
+
+<center>
+<video controls> 
+<source src="adnan.mp4" type="video/mp4"> 
+</video>
+</center>
+
+------------------------------------------------------------------------
+
+### "Systematische Viralität" ? (Muslim Interaktiv)
+
+```{r mi}
+mus_df <- read_excel("mus_data.xlsx")
+
+mus_df$video_length <- format(mus_df$video_length , format="%H:%M:%S")
+mus_df$video_length <- hms(mus_df$video_length)
+mus_df$video_length <- as.duration(mus_df$video_length)
+
+ts_g <- ggplot(mus_df, aes(x = video_date, y = video_likes, text= paste('Datum: ', video_date,
+                                                                        '<br>Likes: ', video_likes,
+                                                                        '<br>Länge: ', video_length))) +
+  geom_point(aes(size = video_length), alpha = 1/2) +
+  scale_size(range = c(0, 12)) +
+  ylab("Likes") +
+  xlab("Datum") +
+  geom_vline(xintercept = as.numeric(as.POSIXct(as.Date("2021-9-4"))), 
+             color = "aquamarine3", 
+             lwd = 0.5, linetype=2)  +
+  annotate("text", x = as.POSIXct(as.Date("2021-9-4")), y = 40000, size = 2, label = "Ann. 11.09.") +
+  geom_vline(xintercept = as.numeric(as.POSIXct(as.Date("2021-7-1"))), 
+             color = "aquamarine3", 
+             lwd = 0.5, linetype=2)  +
+  annotate("text", x = as.POSIXct(as.Date("2021-7-1")), y = 40000, size = 2, label = "Ann. Marwa El-Sherbini") +
+  geom_vline(xintercept = as.numeric(as.POSIXct(as.Date("2021-3-10"))), 
+             color = "aquamarine3", 
+             lwd = 0.5, linetype=2)  +
+  annotate("text", x = as.POSIXct(as.Date("2021-3-10")), y = 40000, size = 2, label = "Ann. Christchurch") +
+  geom_vline(xintercept = as.numeric(as.POSIXct(as.Date("2021-3-27"))), 
+             color = "aquamarine3", 
+             lwd = 0.5, linetype=2)  +
+  annotate("text", x = as.POSIXct(as.Date("2021-3-27")), y = 30000, size = 2, label = "Rassismus Polizei") +
+  geom_vline(xintercept = as.numeric(as.POSIXct(as.Date("2021-5-23"))), 
+             color = "aquamarine3", 
+             lwd = 0.5, linetype=2)  +
+  annotate("text", x = as.POSIXct(as.Date("2021-5-23")), y = 30000, size = 2, label = "C.Özdemir Araber Zitat") +
+  geom_vline(xintercept = as.numeric(as.POSIXct(as.Date("2021-5-7"))), 
+             color = "aquamarine3", 
+             lwd = 0.5, linetype=2)  +
+  annotate("text", x = as.POSIXct(as.Date("2021-5-7")), y = 40000, size = 2, label = "Bundesratbeschl. Kopftuch\nAl-Aqsa") +
+  geom_vline(xintercept = as.numeric(as.POSIXct(as.Date("2021-7-28"))), 
+             color = "aquamarine3", 
+             lwd = 0.5, linetype=2)  +
+  annotate("text", x = as.POSIXct(as.Date("2021-7-28")), y = 30000, size = 2, label = "S.Kurz Bild Interview") +
+  geom_vline(xintercept = as.numeric(as.POSIXct(as.Date("2021-2-17"))), 
+             color = "aquamarine3", 
+             lwd = 0.5, linetype=2)  +
+  annotate("text", x = as.POSIXct(as.Date("2021-2-17")), y = 30000, size = 2, label = "Ann. Hanau") +
+  geom_vline(xintercept = as.numeric(as.POSIXct(as.Date("2021-10-22"))), 
+             color = "aquamarine3", 
+             lwd = 0.5, linetype=2)  +
+  annotate("text", x = as.POSIXct(as.Date("2021-10-22")), y = 30000, size = 2, label = "Bild Adhan") +
+  guides(size=guide_legend(title="Video Length")) +
+  theme_light()
+
+ts_g <- ggplotly(ts_g, tooltip = "text")
+
+ts_g <- ts_g %>%
+  layout(hovermode = "x unified")
+
+ts_g
+```
+
+```{r schrott}
+# # Convert the "date" variable to a date format
+# merged$date <- ymd(merged$date)
+# 
+# # Extract the year and month from the "date" variable
+# merged$year_month <- format(merged$date, "%Y-%m")
+# 
+# # Count the number of videos per year-month
+# video_counts <- merged %>%
+#   group_by(year_month, list) %>%
+#   summarise(video_count = n())
+# 
+# # Plot the fluctuation of videos over the year
+# ggplot(video_counts, aes(x = year_month, y = video_count, color = list)) +
+#   geom_point() +
+#   geom_line() +
+#   theme(legend.position="bottom") +
+#   theme(legend.title=element_blank()) +
+#   scale_color_brewer(palette = "Dark2") + 
+#   labs(x = "Jahr-Monat", y = "Videos") +
+#   scale_x_discrete(labels = function(x) str_wrap(x, width = 10))
+# 
+# # Convert the "date" variable to a date format
+# merged$date <- ymd(merged$date)
+# 
+# # Extract the week from the "date" variable
+# merged$week <- format(merged$date, "%Y-%U")
+# 
+# # Count the number of videos per week and list
+# video_counts <- merged %>%
+#   group_by(week, list) %>%
+#   summarise(video_count = n())
+# 
+# # Extract week and month from the "week" variable
+# video_counts$month_week <- format(as.Date(paste0(video_counts$week, "-1"), format = "%Y-%U-%u"), "%U-%b")
+# 
+# # Plot the fluctuation of videos over the year
+# ggplot(video_counts, aes(x = as.integer(substr(month_week, 1, 2)), y = video_count, color = list)) +
+#   geom_line() +
+#   geom_point() +
+#   theme_minimal() +
+#   theme(legend.position = "bottom",
+#         legend.title = element_blank(),
+#         axis.text.x = element_text(angle = 45, hjust = 1)) +
+#   labs(x = "Week-Month", y = "Number of Videos") +
+#   scale_x_continuous(
+#     breaks = as.integer(substr(video_counts$month_week, 1, 2)),
+#     labels = video_counts$month_week,
+#     expand = c(0.02, 0.02)
+#   ) +
+#   scale_color_discrete(name = "List") +
+#   scale_color_brewer(palette = "Dark2")
+```
+
+## Ausblick
+
+:::{.callout-note}
+
+## Qualitativ
++ Rekonstruktion von Aktivitätsmustern und ihre Interaktion mit dem Algorithmus
++ Herausarbeitung von Substanz, Prevalänz und Dynamik radikaler Inhalt
+  + Radikalismus Indikatoren und ihre (ambivalente/ambiguöse) Entfaltung
+  + Referierte Themen, Akteure und Netzwerke
+  
+:::
+
+:::{.callout-note}
+## Quantitativ
++ Produzent:innen Perspektive vs Konsument:innen Perspektive
+    + Prävalenz unter Konstument:innen
+    + `So what?`: Wie problematisch ist die ganze Geschichte?
+    
+:::
+
+
+:::{.callout-note}
+## Relevanz für Fachpraxis?
+
+:::
+
+# Vielen Dank! {background-color="#40666e"}
+
+## Literatur
+
+::: {#refs}
+:::
+
